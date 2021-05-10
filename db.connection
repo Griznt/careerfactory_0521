@@ -1,0 +1,11 @@
+Данные для доступа на сервер.
+
+DBNAME='sbermarket-test'
+
+USER='rouser'
+
+PASSWORD='ZI6MVnmi'
+
+HOST='178.62.242.91'
+
+PORT=5433
