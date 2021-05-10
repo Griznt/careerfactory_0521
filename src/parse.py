@@ -2,11 +2,14 @@ from csv import DictReader, writer
 import datetime
 import json
 import bisect
+import os
+from statistics import mean, median
 
 # TODO: It's needed to add folder creation
 
 # Used to determine whether two dates belong to the same session or not
-SESSION_WINDOW_VALUES = [None, 730, 360, 240, 120, 60, 48, 36, 24, 12, 8, 6, 4, 2, 1, 0.5] # hours
+# SESSION_WINDOW_VALUES = [None, 730, 360, 240, 120, 60, 48, 36, 24, 12, 8, 6, 4, 2, 1, 0.5] # hours
+SESSION_WINDOW_VALUES = [24, 12, 8, 6, 4, 2, 1, 0.5] # hours
 PREVIOUS_EVENT_DELAY = 10 #minutes
 
 def parseDate(date):
@@ -18,6 +21,15 @@ def parseDate(date):
         return datetime.datetime.strptime(date, format)
     except ValueError:
         return None
+
+# def removeWrongSessions(userSessions):
+#     if 
+#     for session in userSessions:
+#         hitAt = session.get('hit_at')
+#         orderSum = session.get('order_sum')
+#         orderCompletedTimestamp = session.get('orderCompletedTimestamp')
+        
+
 
 # Load new csv file and for each row search userSessions from previous step data.
 # Returns new data for current step of funnel
@@ -35,7 +47,7 @@ def getNextFunnelStepResult(filename, previousStepData, _timestampName, attribut
                 for session in userSessions:
                     sessionTime = session.get('hit_at')
                     timedelta =  parseDate(currentEventDate) - parseDate(sessionTime) 
-                    # gets into in case if SESSION_WINDOW is None or timedelta grather than -20 minutes and lower than SESSION_WINDOW param 
+                    # gets into in case if SESSION_WINDOW is None or timedelta grather than -PREVIOUS_EVENT_DELAY in minutes and lower than SESSION_WINDOW in hour 
                     if not SESSION_WINDOW or (-1 * datetime.timedelta(minutes=PREVIOUS_EVENT_DELAY)) < timedelta < datetime.timedelta(hours=SESSION_WINDOW):
                         if not session.get(timestampName):
                             session[timestampName] = []
@@ -46,10 +58,9 @@ def getNextFunnelStepResult(filename, previousStepData, _timestampName, attribut
                             for attr in attributes:
                                 if not session.get(attr):
                                     session[attr] = []
-                                    value = row[attr]
-                                    if value not in session[attr]:
-                                        # insert new value to ordered list
-                                        bisect.insort(session[attr], value)
+                                value = row[attr]
+                                if value not in session[attr]:
+                                    session[attr].append(value)
                         if not newData.get(id):
                             newData[id] = []
                         
@@ -71,39 +82,85 @@ def getBouncedUsersOnStep(filename,  firstStepUsers):
     print('users followed on next step: ', len(array), '\r\nusers count, who didn\'t go to step \"', filename, '\" is', len(firstStepUsers))
     # return firstStepUsers 
 
-def saveToFile(filename, data):
-    with open('result/' + filename, 'w') as fp:
+def saveToJSON(filename, data):
+    if not os.path.exists('result'):
+        os.makedirs('result')
+    with open('result/' + filename + '.json', 'w') as fp:
         json.dump(data, fp)
 
-# def iterateOverDict(data):
-#     jsonArray = []
-#     for key in data:
-#         value = data[key]
-#         print('key', key, '\r\nvalue', value)
-#         row = {}
-#         print('type(value)', type(value), '\r\ntype(value) is dict', type(value) is dict, '\r\ntype(value) is list', type(value) is list ,'\r\n', value)
-#         if type(value) is dict:
-#             iterateOverDict(data)
-#         elif type(value) is list:
-#             row[key] = '\n'.join(value)
-#         else:
-#             row[key] = value
-#         jsonArray.append(row)
-#     return jsonArray
-
 def saveToCSV(filename, data):
-    jsonArray = []
-    for userData in data:
-        print(type(userData))
-        for key in userData:
-            item = userData[key]
-            row = {}
-            if type(item) is list:
-                row[key] = '\n'.join(item)
-            else:
-                row[key] = item
-            jsonArray.append(row)
-    saveToFile(filename, jsonArray)
+    if not os.path.exists('result'):
+        os.makedirs('result')
+    dataFile = open('result/' + filename + '.csv', 'w')
+    csvWriter = writer(dataFile)
+    csvWriter.writerow(['anonymous_id','hit_at','device_type','addressChangeInitiatedTimestamp','productAddedTimestamp','orderCompletedTimestamp','order_sum'])
+    for userId in data:
+        userSessions = data[userId]
+        for session in userSessions:
+            row = [userId]
+            for key in session:
+                item = session[key]
+                if type(item) is list:
+                    row.append('\r\n'.join(item))
+                else:
+                    row.append(item)
+            csvWriter.writerow(row)
+
+def calculateRevenue(group, data, allUsersCount):
+    result = {}
+    purchasesCountPerUser = []
+    purchasesCount = 0
+    payingUsersCount = 0
+    allPurchases = []
+    revenue = 0
+    for userId in data:
+        userSessions = data[userId]
+        purchases = []
+        for session in userSessions:
+            userSessionOrdersCost = session.get('order_sum')
+            if userSessionOrdersCost:
+                # if userSessionOrdersCost not in userRevenue:
+                for orderSum in userSessionOrdersCost:
+                    if orderSum not in purchases:
+                        purchases.append(float(orderSum))
+        if not result.get(userId):
+            result[userId] = purchases
+            purchasesCount += len(purchases)
+            purchasesCountPerUser.append(len(purchases))
+            for purchase in purchases:
+                allPurchases.append(purchase)
+                revenue += purchase
+            if len(purchases) > 0:
+                payingUsersCount += 1
+
+    
+    print('--------------------------------------\r\nrevenue')
+    print(group,'\r\n',
+        'users count:', allUsersCount,'\r\n',
+        'paying users count:', payingUsersCount,'\r\n',
+        'purchases count:', purchasesCount,'\r\n',
+        'purchases count per users from users:', purchasesCount/allUsersCount,'\r\n',
+        'avg purchases by user:', mean(purchasesCountPerUser),'\r\n',
+        'median purchases by user:', median(purchasesCountPerUser),'\r\n',
+        'average purchase value:', mean(allPurchases),'\r\n',
+        'median purchase value:', median(allPurchases),
+        'ARPU:', revenue/allUsersCount,'\r\n',
+        'ARPPU:', revenue/payingUsersCount
+        )
+   
+    
+    saveToJSON(group + '_revenue', result)
+    saveToJSON(group + '_revenue_RESULT',  {
+        'users count:': allUsersCount,
+        'paying users count:': payingUsersCount,
+        'purchases count:': purchasesCount,
+        'purchases count per users from users:': purchasesCount/allUsersCount,
+        'avg purchases by user:': mean(purchasesCountPerUser),
+        'average purchase value:': mean(allPurchases),
+        'median purchase value:': median(allPurchases),
+        'ARPU:': revenue/allUsersCount,
+        'ARPPU:': revenue/payingUsersCount
+    })
 
 
 
@@ -124,7 +181,7 @@ with open('ext/AB Test Hit.csv', 'r') as read_obj:
 CONTROL_GROUP_NAME = 'default'
 TEST_GROUP_NAME = 'address_first'
 
-testGroupUniuqueUsers = {}
+testGroupUniqueUsers = {}
 controlGroupUniqueUsers = {}
 
 mixedGroup = []
@@ -145,7 +202,7 @@ for id, sessions in uniqueUsers.items():
     elif len(controlGroupSessionTimestamps) > 0:
         controlGroupUniqueUsers[id] = controlGroupSessionTimestamps
     elif len(testGroupSessionTimestamps) > 0:
-        testGroupUniuqueUsers[id] = testGroupSessionTimestamps
+        testGroupUniqueUsers[id] = testGroupSessionTimestamps
 
 print(
 'total unique users', len(uniqueUsers),
@@ -172,7 +229,7 @@ for id, valuesList in controlGroupUniqueUsers.items():
             controlGroupUsersByDeviceTypes[deviceType] = []
         controlGroupUsersByDeviceTypes[deviceType].append(value) 
 
-for id, valuesList in testGroupUniuqueUsers.items():
+for id, valuesList in testGroupUniqueUsers.items():
     if len(valuesList) > 1:
         testGroupUsersMulti.append(valuesList)
     else:
@@ -182,10 +239,10 @@ for id, valuesList in testGroupUniuqueUsers.items():
             testGroupUsersByDeviceTypes[deviceType] = []
         testGroupUsersByDeviceTypes[deviceType].append(value)     
 
-# saveToCSV('controlGroupMulti.json', controlGroupUsersMulti)
-# saveToCSV('testGroupUsersMulti.json', testGroupUsersMulti)
-# saveToCSV('controlGroupUsersByDeviceTypes.json', controlGroupUsersByDeviceTypes)
-# saveToCSV('testGroupUsersByDeviceTypes.json', testGroupUsersByDeviceTypes)
+# saveToCSV('controlGroupMulti', controlGroupUsersMulti)
+# saveToCSV('testGroupUsersMulti', testGroupUsersMulti)
+# saveToCSV('controlGroupUsersByDeviceTypes', controlGroupUsersByDeviceTypes)
+# saveToCSV('testGroupUsersByDeviceTypes', testGroupUsersByDeviceTypes)
 
 
 for SESSION_WINDOW in SESSION_WINDOW_VALUES:
@@ -201,22 +258,33 @@ for SESSION_WINDOW in SESSION_WINDOW_VALUES:
     result = getNextFunnelStepResult('Product Added.csv', result, 'productAdded')
     # get intersection of cguu and users from next step: order completed
     result = getNextFunnelStepResult('Order Completed.csv', result, 'orderCompleted', ['order_sum'])
-    saveToCSV('control_group_session_window_' + (SESSION_WINDOW == None and 'unset' or str(SESSION_WINDOW) + 'h') + '.json', result)
+    currentResultName = 'control_group_session_window_' + (SESSION_WINDOW == None and 'unset' or str(SESSION_WINDOW) + 'h')
+    
+    saveToCSV(currentResultName, result)
+    calculateRevenue(currentResultName, result, len(controlGroupUniqueUsers))
     result.clear()
     print('--------------------------------------')
 
     #------------------
     #------------------
     # test group users
-    print('test group unique users', len(testGroupUniuqueUsers))
-    result = testGroupUniuqueUsers
+    print('test group unique users', len(testGroupUniqueUsers))
+    result = testGroupUniqueUsers
     # get intersection of tguu and users from next step: address change initiated
     result = getNextFunnelStepResult('Address Change Initiated.csv', result, 'addressChangeInitiated')
+    saveToJSON('users count on Address Change Initiated test group', result)
     # get intersection of tguu and users from next step: product added
     result = getNextFunnelStepResult('Product Added.csv', result, 'productAdded')
+    saveToJSON('users count on Product Added test group', result)
     # product added step
     result = getNextFunnelStepResult('Order Completed.csv', result, 'orderCompleted', ['order_sum'])
-    saveToCSV('test_group_session_window_' + (SESSION_WINDOW == None and 'unset' or str(SESSION_WINDOW) + 'h') + '.json', result)
+    saveToJSON('users count on Order Completed test group', result)
+    currentResultName = 'test_group_session_window_' + (SESSION_WINDOW == None and 'unset' or str(SESSION_WINDOW) + 'h')
+
+    saveToCSV(currentResultName, result)
+    saveToJSON(currentResultName, result)
+    calculateRevenue(currentResultName,result, len(testGroupUniqueUsers))
+    
     result.clear()
 
 print('\r\n')
@@ -253,7 +321,7 @@ for filename in controlGroupOrderedStepFilenames:
     getBouncedUsersOnStep(filename, controlGroupBouncedUsers)
 print('control group bounced users count is', len(controlGroupBouncedUsers))
 print('--------------------------------------')
-testGroupBouncedUsers = testGroupUniuqueUsers
+testGroupBouncedUsers = testGroupUniqueUsers
 for filename in testGroupOrderedStepFilenames:
     getBouncedUsersOnStep(filename, testGroupBouncedUsers)
 print('test group bounced users count is', len(testGroupBouncedUsers))
