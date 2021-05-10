@@ -1,4 +1,4 @@
 # cf
 test task
 
-* run with command python3 ```./src/parse.py```
+* run with command ```python3 ./src/parse.py```
