@@ -5,8 +5,6 @@ import bisect
 import os
 from statistics import mean, median
 
-# TODO: It's needed to add folder creation
-
 # Used to determine whether two dates belong to the same session or not
 # SESSION_WINDOW_VALUES = [None, 730, 360, 240, 120, 60, 48, 36, 24, 12, 8, 6, 4, 2, 1, 0.5] # hours
 SESSION_WINDOW_VALUES = [24, 12, 8, 6, 4, 2, 1, 0.5] # hours
@@ -140,26 +138,27 @@ def calculateRevenue(group, data, allUsersCount):
         'paying users count:', payingUsersCount,'\r\n',
         'purchases count:', purchasesCount,'\r\n',
         'purchases count per users from users:', purchasesCount/allUsersCount,'\r\n',
-        'avg purchases by user:', mean(purchasesCountPerUser),'\r\n',
-        'median purchases by user:', median(purchasesCountPerUser),'\r\n',
+        'purchases per paying user:', mean(purchasesCountPerUser),'\r\n',
         'average purchase value:', mean(allPurchases),'\r\n',
         'median purchase value:', median(allPurchases),
         'ARPU:', revenue/allUsersCount,'\r\n',
-        'ARPPU:', revenue/payingUsersCount
+        'ARPPU:', revenue/payingUsersCount,
+        'total Revenue:', revenue
         )
    
     
     saveToJSON(group + '_revenue', result)
     saveToJSON(group + '_revenue_RESULT',  {
-        'users count:': allUsersCount,
-        'paying users count:': payingUsersCount,
-        'purchases count:': purchasesCount,
-        'purchases count per users from users:': purchasesCount/allUsersCount,
-        'avg purchases by user:': mean(purchasesCountPerUser),
-        'average purchase value:': mean(allPurchases),
-        'median purchase value:': median(allPurchases),
-        'ARPU:': revenue/allUsersCount,
-        'ARPPU:': revenue/payingUsersCount
+        'users count': allUsersCount,
+        'paying users count': payingUsersCount,
+        'purchases count': purchasesCount,
+        'purchases count per users': purchasesCount/allUsersCount,
+        'purchases per paying user': mean(purchasesCountPerUser),
+        'average purchase value': mean(allPurchases),
+        'median purchase value': median(allPurchases),
+        'ARPU': revenue/allUsersCount,
+        'ARPPU': revenue/payingUsersCount,
+        'payingShare': payingUsersCount/allUsersCount
     })
 
 
@@ -320,8 +319,10 @@ controlGroupBouncedUsers = controlGroupUniqueUsers
 for filename in controlGroupOrderedStepFilenames:
     getBouncedUsersOnStep(filename, controlGroupBouncedUsers)
 print('control group bounced users count is', len(controlGroupBouncedUsers))
+print('control group Bounce Rate is:', len(controlGroupBouncedUsers)/len(controlGroupUniqueUsers))
 print('--------------------------------------')
 testGroupBouncedUsers = testGroupUniqueUsers
 for filename in testGroupOrderedStepFilenames:
     getBouncedUsersOnStep(filename, testGroupBouncedUsers)
 print('test group bounced users count is', len(testGroupBouncedUsers))
+print('test group Bounce Rate is:', len(testGroupBouncedUsers)/len(testGroupUniqueUsers))
