@@ -7,7 +7,7 @@ from statistics import mean, median
 
 # Used to determine whether two dates belong to the same session or not
 # SESSION_WINDOW_VALUES = [None, 730, 360, 240, 120, 60, 48, 36, 24, 12, 8, 6, 4, 2, 1, 0.5] # hours
-SESSION_WINDOW_VALUES = [24, 12, 8, 6, 4, 2, 1, 0.5] # hours
+SESSION_WINDOW_VALUES = [24, 12] # hours
 PREVIOUS_EVENT_DELAY = 10 #minutes
 
 def parseDate(date):
@@ -103,6 +103,8 @@ def saveToCSV(filename, data):
                 else:
                     row.append(item)
             csvWriter.writerow(row)
+def formatPercentage(number):
+    return "{:.2%}".format(number)
 
 def calculateRevenue(group, data, allUsersCount):
     result = {}
@@ -137,33 +139,31 @@ def calculateRevenue(group, data, allUsersCount):
         'users count:', allUsersCount,'\r\n',
         'paying users count:', payingUsersCount,'\r\n',
         'purchases count:', purchasesCount,'\r\n',
-        'purchases count per users from users:', purchasesCount/allUsersCount,'\r\n',
+        'purchases count per user:', purchasesCount/allUsersCount,'\r\n',
         'purchases per paying user:', mean(purchasesCountPerUser),'\r\n',
         'average purchase value:', mean(allPurchases),'\r\n',
-        'median purchase value:', median(allPurchases),
+        'median purchase value:', median(allPurchases),'\r\n',
         'ARPU:', revenue/allUsersCount,'\r\n',
-        'ARPPU:', revenue/payingUsersCount,
+        'ARPPU:', revenue/payingUsersCount,'\r\n',
+        'payingShare:', formatPercentage(payingUsersCount/allUsersCount),'\r\n',
         'total Revenue:', revenue
         )
    
     
-    saveToJSON(group + '_revenue', result)
+    saveToJSON(group + '_all_transactions', result)
     saveToJSON(group + '_revenue_RESULT',  {
         'users count': allUsersCount,
         'paying users count': payingUsersCount,
         'purchases count': purchasesCount,
-        'purchases count per users': purchasesCount/allUsersCount,
+        'purchases count per user': purchasesCount/allUsersCount,
         'purchases per paying user': mean(purchasesCountPerUser),
         'average purchase value': mean(allPurchases),
         'median purchase value': median(allPurchases),
         'ARPU': revenue/allUsersCount,
         'ARPPU': revenue/payingUsersCount,
-        'payingShare': payingUsersCount/allUsersCount
+        'payingShare': formatPercentage(payingUsersCount/allUsersCount),
+        'total Revenue': revenue
     })
-
-
-
-
 
 # get unique users
 uniqueUsers = {}
@@ -238,10 +238,21 @@ for id, valuesList in testGroupUniqueUsers.items():
             testGroupUsersByDeviceTypes[deviceType] = []
         testGroupUsersByDeviceTypes[deviceType].append(value)     
 
-# saveToCSV('controlGroupMulti', controlGroupUsersMulti)
-# saveToCSV('testGroupUsersMulti', testGroupUsersMulti)
-# saveToCSV('controlGroupUsersByDeviceTypes', controlGroupUsersByDeviceTypes)
-# saveToCSV('testGroupUsersByDeviceTypes', testGroupUsersByDeviceTypes)
+print('control group:')
+for device in controlGroupUsersByDeviceTypes.keys():
+    count = len(controlGroupUsersByDeviceTypes[device])
+    print('users count with device type', device, 'is', count, 
+    formatPercentage(count/len(controlGroupUniqueUsers)))
+print('control group users with different device types', len(controlGroupUsersMulti), 
+formatPercentage(len(controlGroupUsersMulti)/len(controlGroupUniqueUsers)))
+print('--------------------------------------')
+print('test group:')
+for device in testGroupUsersByDeviceTypes.keys():
+    count = len(testGroupUsersByDeviceTypes[device])
+    print('users count with device type', device, 'is', count, 
+    formatPercentage(count/len(testGroupUniqueUsers)))
+print('control group users with different device types', len(testGroupUsersMulti), 
+formatPercentage(len(testGroupUsersMulti)/len(testGroupUniqueUsers)))
 
 
 for SESSION_WINDOW in SESSION_WINDOW_VALUES:
@@ -315,14 +326,16 @@ testGroupOrderedStepFilenames = [
 
 print('bounce rate calculation')
 print('--------------------------------------')
-controlGroupBouncedUsers = controlGroupUniqueUsers
+controlGroupBouncedUsers = controlGroupUniqueUsers.copy()
 for filename in controlGroupOrderedStepFilenames:
+    print('calculating bounced users in', filename)
     getBouncedUsersOnStep(filename, controlGroupBouncedUsers)
 print('control group bounced users count is', len(controlGroupBouncedUsers))
-print('control group Bounce Rate is:', len(controlGroupBouncedUsers)/len(controlGroupUniqueUsers))
+print('control group Bounce Rate is:', formatPercentage(len(controlGroupBouncedUsers)/len(controlGroupUniqueUsers)))
 print('--------------------------------------')
-testGroupBouncedUsers = testGroupUniqueUsers
+testGroupBouncedUsers = testGroupUniqueUsers.copy()
 for filename in testGroupOrderedStepFilenames:
+    print('calculating bounced users in', filename)
     getBouncedUsersOnStep(filename, testGroupBouncedUsers)
 print('test group bounced users count is', len(testGroupBouncedUsers))
-print('test group Bounce Rate is:', len(testGroupBouncedUsers)/len(testGroupUniqueUsers))
+print('test group Bounce Rate is:', formatPercentage(len(testGroupBouncedUsers)/len(testGroupUniqueUsers)))
