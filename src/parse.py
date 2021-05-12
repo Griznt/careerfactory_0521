@@ -7,8 +7,10 @@ from statistics import mean, median
 
 # Used to determine whether two dates belong to the same session or not
 # SESSION_WINDOW_VALUES = [None, 730, 360, 240, 120, 60, 48, 36, 24, 12, 8, 6, 4, 2, 1, 0.5] # hours
-SESSION_WINDOW_VALUES = [24, 12] # hours
+SESSION_WINDOW_VALUES = [24, 12, None] # hours
 PREVIOUS_EVENT_DELAY = 10 #minutes
+# According with rules and promocodes https://sbermarket.ru/rules/new?source=banner_main_page&bannerId=626 
+MIN_ORDER_PRICE = 1000 * 0.85 #15% off by promocode. So, it's possible
 
 def parseDate(date):
     format = '%Y-%m-%d %H:%M:%S.%f UTC'
@@ -119,11 +121,13 @@ def calculateRevenue(group, data, allUsersCount):
         for session in userSessions:
             userSessionOrdersCost = session.get('order_sum')
             if userSessionOrdersCost:
-                # if userSessionOrdersCost not in userRevenue:
-                for orderSum in userSessionOrdersCost:
-                    if orderSum not in purchases:
-                        purchases.append(float(orderSum))
-        if not result.get(userId):
+                for _orderSum in userSessionOrdersCost:
+                    orderSum = float(_orderSum)
+                    if orderSum >= MIN_ORDER_PRICE and orderSum not in purchases:
+                        purchases.append(orderSum)
+        if len(purchases) == 0:
+            print(purchases, userId, userSessions)
+        if not result.get(userId) and len(purchases) > 0:
             result[userId] = purchases
             purchasesCount += len(purchases)
             purchasesCountPerUser.append(len(purchases))
@@ -132,9 +136,10 @@ def calculateRevenue(group, data, allUsersCount):
                 revenue += purchase
             if len(purchases) > 0:
                 payingUsersCount += 1
-
     
-    print('--------------------------------------\r\nrevenue')
+    allTransactionsList = [item for sublist in result.values() for item in sublist]
+    
+    print('--------------------------------------\r\nrevenue\r\n--------------------------------------\r\n')
     print(group,'\r\n',
         'users count:', allUsersCount,'\r\n',
         'paying users count:', payingUsersCount,'\r\n',
@@ -146,11 +151,15 @@ def calculateRevenue(group, data, allUsersCount):
         'ARPU:', revenue/allUsersCount,'\r\n',
         'ARPPU:', revenue/payingUsersCount,'\r\n',
         'payingShare:', formatPercentage(payingUsersCount/allUsersCount),'\r\n',
-        'total Revenue:', revenue
+        'total Revenue:', revenue,'\r\n',
+        'max price:', max(allTransactionsList),'\r\n',
+        'min price:', min(allTransactionsList)
         )
    
     
-    saveToJSON(group + '_all_transactions', result)
+    saveToJSON(group + '_all_users_transactions_', result)
+    
+    saveToJSON(group + '_all_transactions_list', allTransactionsList)
     saveToJSON(group + '_revenue_RESULT',  {
         'users count': allUsersCount,
         'paying users count': payingUsersCount,
@@ -161,7 +170,7 @@ def calculateRevenue(group, data, allUsersCount):
         'median purchase value': median(allPurchases),
         'ARPU': revenue/allUsersCount,
         'ARPPU': revenue/payingUsersCount,
-        'payingShare': formatPercentage(payingUsersCount/allUsersCount),
+        'payingShare': payingUsersCount/allUsersCount,
         'total Revenue': revenue
     })
 
