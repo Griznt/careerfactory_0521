@@ -9,8 +9,8 @@ from statistics import mean, median
 # SESSION_WINDOW_VALUES = [None, 730, 360, 240, 120, 60, 48, 36, 24, 12, 8, 6, 4, 2, 1, 0.5] # hours
 SESSION_WINDOW_VALUES = [24, 12, None] # hours
 PREVIOUS_EVENT_DELAY = 10 #minutes
-# According with rules and promocodes https://sbermarket.ru/rules/new?source=banner_main_page&bannerId=626 
-MIN_ORDER_PRICE = 1000 * 0.85 #15% off by promocode. So, it's possible
+# According with rules and promocodes https://sbermarket.ru/rules/new
+MIN_ORDER_PRICE = 1000 * 0.85 #15% off by promocode
 
 def parseDate(date):
     format = '%Y-%m-%d %H:%M:%S.%f UTC'
@@ -29,8 +29,6 @@ def parseDate(date):
 #         orderSum = session.get('order_sum')
 #         orderCompletedTimestamp = session.get('orderCompletedTimestamp')
         
-
-
 # Load new csv file and for each row search userSessions from previous step data.
 # Returns new data for current step of funnel
 def getNextFunnelStepResult(filename, previousStepData, _timestampName, attributes = False):
@@ -47,7 +45,7 @@ def getNextFunnelStepResult(filename, previousStepData, _timestampName, attribut
                 for session in userSessions:
                     sessionTime = session.get('hit_at')
                     timedelta =  parseDate(currentEventDate) - parseDate(sessionTime) 
-                    # gets into in case if SESSION_WINDOW is None or timedelta grather than -PREVIOUS_EVENT_DELAY in minutes and lower than SESSION_WINDOW in hour 
+                    # gets into in case if SESSION_WINDOW is None or timedelta grather than PREVIOUS_EVENT_DELAY in minutes and lower than SESSION_WINDOW in hour 
                     if not SESSION_WINDOW or (-1 * datetime.timedelta(minutes=PREVIOUS_EVENT_DELAY)) < timedelta < datetime.timedelta(hours=SESSION_WINDOW):
                         if not session.get(timestampName):
                             session[timestampName] = []
@@ -105,6 +103,7 @@ def saveToCSV(filename, data):
                 else:
                     row.append(item)
             csvWriter.writerow(row)
+
 def formatPercentage(number):
     return "{:.2%}".format(number)
 
