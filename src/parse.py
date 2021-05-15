@@ -40,12 +40,12 @@ def getNextFunnelStepResult(filename, previousStepData, _timestampName, attribut
             id = row['anonymous_id']
             userSessions = previousStepData.get(id)
             if userSessions:
-                # checking current intersection with users sessions:
+                # checking intersection between with users sessions:
                 currentEventDate = row['timestamp']
                 for session in userSessions:
-                    sessionTime = session.get('hit_at')
-                    timedelta =  parseDate(currentEventDate) - parseDate(sessionTime) 
-                    # gets into in case if SESSION_WINDOW is None or timedelta grather than PREVIOUS_EVENT_DELAY in minutes and lower than SESSION_WINDOW in hour 
+                    sessionStartTime = session.get('hit_at')
+                    timedelta =  parseDate(currentEventDate) - parseDate(sessionStartTime) 
+                    # gets inside if SESSION_WINDOW is None or timedelta grather than PREVIOUS_EVENT_DELAY in minutes and lower than SESSION_WINDOW in hour 
                     if not SESSION_WINDOW or (-1 * datetime.timedelta(minutes=PREVIOUS_EVENT_DELAY)) < timedelta < datetime.timedelta(hours=SESSION_WINDOW):
                         if not session.get(timestampName):
                             session[timestampName] = []
