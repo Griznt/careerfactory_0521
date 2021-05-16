@@ -5,12 +5,16 @@ import bisect
 import os
 from statistics import mean, median
 
+#TODO: add const description in README.md
+
 # Used to determine whether two dates belong to the same session or not
 # SESSION_WINDOW_VALUES = [None, 730, 360, 240, 120, 60, 48, 36, 24, 12, 8, 6, 4, 2, 1, 0.5] # hours
-SESSION_WINDOW_VALUES = [24, 12, None] # hours
+SESSION_WINDOW_VALUES = [None, 24, 12] # hours
 PREVIOUS_EVENT_DELAY = 10 #minutes
 # According with rules and promocodes https://sbermarket.ru/rules/new
 MIN_ORDER_PRICE = 1000 * 0.85 #15% off by promocode
+# Exclude users with multiple sessions or stay them with only one the earliest hit_at event
+EXCLUDE_MULTIPLE_SESSIONS = True
 
 def parseDate(date):
     format = '%Y-%m-%d %H:%M:%S.%f UTC'
@@ -21,13 +25,6 @@ def parseDate(date):
         return datetime.datetime.strptime(date, format)
     except ValueError:
         return None
-
-# def removeWrongSessions(userSessions):
-#     if 
-#     for session in userSessions:
-#         hitAt = session.get('hit_at')
-#         orderSum = session.get('order_sum')
-#         orderCompletedTimestamp = session.get('orderCompletedTimestamp')
         
 # Load new csv file and for each row search userSessions from previous step data.
 # Returns new data for current step of funnel
@@ -38,32 +35,32 @@ def getNextFunnelStepResult(filename, previousStepData, _timestampName, attribut
         csv_dict_reader = DictReader(read_obj)
         for row in csv_dict_reader:
             id = row['anonymous_id']
-            userSessions = previousStepData.get(id)
-            if userSessions:
+            session = previousStepData.get(id)
+            if session:
                 # checking intersection between with users sessions:
                 currentEventDate = row['timestamp']
-                for session in userSessions:
-                    sessionStartTime = session.get('hit_at')
-                    timedelta =  parseDate(currentEventDate) - parseDate(sessionStartTime) 
-                    # gets inside if SESSION_WINDOW is None or timedelta grather than PREVIOUS_EVENT_DELAY in minutes and lower than SESSION_WINDOW in hour 
-                    if not SESSION_WINDOW or (-1 * datetime.timedelta(minutes=PREVIOUS_EVENT_DELAY)) < timedelta < datetime.timedelta(hours=SESSION_WINDOW):
-                        if not session.get(timestampName):
-                            session[timestampName] = []
-                        if currentEventDate not in session[timestampName]:
-                            # insert new value to ordered list
-                            bisect.insort(session[timestampName], currentEventDate)
-                        if attributes:
-                            for attr in attributes:
-                                if not session.get(attr):
-                                    session[attr] = []
-                                value = row[attr]
-                                if value not in session[attr]:
-                                    session[attr].append(value)
-                        if not newData.get(id):
-                            newData[id] = []
-                        
-                        if session not in newData[id]:
-                            newData[id].append(session)
+                sessionStartTime = session.get('hit_at')
+                timedelta =  parseDate(currentEventDate) - parseDate(sessionStartTime) 
+                # gets inside if SESSION_WINDOW is None or timedelta grather than PREVIOUS_EVENT_DELAY in minutes and lower than SESSION_WINDOW in hour 
+                if not SESSION_WINDOW or (-1 * datetime.timedelta(minutes=PREVIOUS_EVENT_DELAY)) < timedelta < datetime.timedelta(hours=SESSION_WINDOW):
+                    if not session.get(timestampName):
+                        session[timestampName] = []
+                    if currentEventDate not in session[timestampName]:
+                        # insert new value to ordered list
+                        bisect.insort(session[timestampName], currentEventDate)
+                    if attributes:
+                        for attr in attributes:
+                            if not session.get(attr):
+                                session[attr] = []
+                            value = row[attr]
+                            if value not in session[attr]:
+                                session[attr].append(value)
+                    if not newData.get(id):
+                        newData[id] = {}
+                    
+                    if session != newData[id]:
+                        newData[id] = session
+
     print('users count on step ' + _timestampName, len(newData))
     return newData
 
@@ -78,7 +75,6 @@ def getBouncedUsersOnStep(filename,  firstStepUsers):
                 if id not in array:
                     array.append(id)
     print('users followed on next step: ', len(array), '\r\nusers count, who didn\'t go to step \"', filename, '\" is', len(firstStepUsers))
-    # return firstStepUsers 
 
 def saveToJSON(filename, data):
     if not os.path.exists('result'):
@@ -93,19 +89,18 @@ def saveToCSV(filename, data):
     csvWriter = writer(dataFile)
     csvWriter.writerow(['anonymous_id','hit_at','device_type','addressChangeInitiatedTimestamp','productAddedTimestamp','orderCompletedTimestamp','order_sum'])
     for userId in data:
-        userSessions = data[userId]
-        for session in userSessions:
-            row = [userId]
-            for key in session:
-                item = session[key]
-                if type(item) is list:
-                    row.append('\r\n'.join(item))
-                else:
-                    row.append(item)
-            csvWriter.writerow(row)
+        session = data[userId]
+        row = [userId]
+        for key in session:
+            item = session[key]
+            if type(item) is list:
+                row.append('\r\n'.join(item))
+            else:
+                row.append(item)
+        csvWriter.writerow(row)
 
 def formatPercentage(number):
-    return "{:.2%}".format(number)
+    return "{:.3%}".format(number)
 
 def calculateRevenue(group, data, allUsersCount):
     result = {}
@@ -115,17 +110,14 @@ def calculateRevenue(group, data, allUsersCount):
     allPurchases = []
     revenue = 0
     for userId in data:
-        userSessions = data[userId]
+        session = data[userId]
         purchases = []
-        for session in userSessions:
-            userSessionOrdersCost = session.get('order_sum')
-            if userSessionOrdersCost:
-                for _orderSum in userSessionOrdersCost:
-                    orderSum = float(_orderSum)
-                    if orderSum >= MIN_ORDER_PRICE and orderSum not in purchases:
-                        purchases.append(orderSum)
-        if len(purchases) == 0:
-            print(purchases, userId, userSessions)
+        userSessionOrdersCost = session.get('order_sum')
+        if userSessionOrdersCost:
+            for _orderSum in userSessionOrdersCost:
+                orderSum = float(_orderSum)
+                if orderSum >= MIN_ORDER_PRICE and orderSum not in purchases:
+                    purchases.append(orderSum)
         if not result.get(userId) and len(purchases) > 0:
             result[userId] = purchases
             purchasesCount += len(purchases)
@@ -173,6 +165,22 @@ def calculateRevenue(group, data, allUsersCount):
         'total Revenue': revenue
     })
 
+def toCSV(filename, data):
+    dataFile = open('result/' + filename + '.csv', 'w')
+    csvWriter = writer(dataFile)
+    csvWriter.writerow(['anonymous_id','hit_at','device_type'])
+    for userId in data:
+        session = data[userId]
+        row = [userId]
+        for key in session:
+            item = session[key]
+            if type(item) is list:
+                row.append('\r\n'.join(item))
+            else:
+                row.append(item)
+        csvWriter.writerow(row)
+
+
 # get unique users
 uniqueUsers = {}
 with open('ext/AB Test Hit.csv', 'r') as read_obj:
@@ -184,7 +192,6 @@ with open('ext/AB Test Hit.csv', 'r') as read_obj:
         uniqueUsers[id].append({'group': row['group'] , 'hit_at': row['hit_at'], 'device_type': row['device_type']})
 
 # get users who is in mixed groups
-
 CONTROL_GROUP_NAME = 'default'
 TEST_GROUP_NAME = 'address_first'
 
@@ -193,8 +200,10 @@ controlGroupUniqueUsers = {}
 
 mixedGroup = []
 
-for id, sessions in uniqueUsers.items():
+controlGroupUsersForDevicesDistribution = {}
+testGroupUsersForDevicesDistribution = {}
 
+for id, sessions in uniqueUsers.items():
     controlGroupSessionTimestamps = []
     testGroupSessionTimestamps = []
     for session in sessions:
@@ -207,28 +216,32 @@ for id, sessions in uniqueUsers.items():
     if len(controlGroupSessionTimestamps) > 0 and len(testGroupSessionTimestamps) > 0:
         mixedGroup.append(id)
     elif len(controlGroupSessionTimestamps) > 0:
-        controlGroupUniqueUsers[id] = controlGroupSessionTimestamps
+        controlGroupUsersForDevicesDistribution[id] = controlGroupSessionTimestamps
+        # if only one session per user or if multiple sessions are allowed by const EXCLUDE_MULTIPLE_SESSIONS
+        # take very first item. This is the earlest hit_at
+        if len(controlGroupSessionTimestamps) == 1 or not EXCLUDE_MULTIPLE_SESSIONS:
+            controlGroupSessionTimestamps.sort(key = lambda x:x['hit_at'])
+            controlGroupUniqueUsers[id] = controlGroupSessionTimestamps[0]
     elif len(testGroupSessionTimestamps) > 0:
-        testGroupUniqueUsers[id] = testGroupSessionTimestamps
+        testGroupUsersForDevicesDistribution[id] = testGroupSessionTimestamps
+        # if only one session per user or if multiple sessions are allowed by const EXCLUDE_MULTIPLE_SESSIONS
+        # take very first item. This is the earlest hit_at
+        if len(testGroupSessionTimestamps) == 1 or not EXCLUDE_MULTIPLE_SESSIONS:
+            testGroupSessionTimestamps.sort(key = lambda x:x['hit_at'])
+            testGroupUniqueUsers[id] = testGroupSessionTimestamps[0]
 
-print(
-'total unique users', len(uniqueUsers),
-'\r\nusers in both groups:', len(mixedGroup),
-'\r\nunique without mixed users:', len(uniqueUsers) - len(mixedGroup))
-uniqueUsers.clear()
 
-
-print('--------------------------------------')
-print('users devices distribution')
+# toCSV('testGroupUniqueUsers', testGroupUniqueUsers)
+# toCSV('controlGroupUniqueUsers', controlGroupUniqueUsers)
 
 controlGroupUsersByDeviceTypes = {}
-controlGroupUsersMulti = []
+controlGroupUsersMultiSessions = []
 testGroupUsersByDeviceTypes = {}
-testGroupUsersMulti = []
+testGroupUsersMultiSessions = []
 
-for id, valuesList in controlGroupUniqueUsers.items():
+for id, valuesList in controlGroupUsersForDevicesDistribution.items():
     if len(valuesList) > 1:
-        controlGroupUsersMulti.append(valuesList)
+        controlGroupUsersMultiSessions.append(valuesList)
     else:
         value = valuesList[0]
         deviceType = value['device_type']
@@ -236,36 +249,46 @@ for id, valuesList in controlGroupUniqueUsers.items():
             controlGroupUsersByDeviceTypes[deviceType] = []
         controlGroupUsersByDeviceTypes[deviceType].append(value) 
 
-for id, valuesList in testGroupUniqueUsers.items():
+for id, valuesList in testGroupUsersForDevicesDistribution.items():
     if len(valuesList) > 1:
-        testGroupUsersMulti.append(valuesList)
+        testGroupUsersMultiSessions.append(valuesList)
     else:
         value = valuesList[0]
         deviceType = value['device_type']
         if not testGroupUsersByDeviceTypes.get(deviceType):
             testGroupUsersByDeviceTypes[deviceType] = []
-        testGroupUsersByDeviceTypes[deviceType].append(value)     
+        testGroupUsersByDeviceTypes[deviceType].append(value)  
 
+print('total unique users', len(uniqueUsers))
+print('users in both groups:', len(mixedGroup))
+print('unique without mixed users:', len(uniqueUsers) - len(mixedGroup))
+print('control group users with different device types', len(controlGroupUsersMultiSessions))
+print('control group users count', len(controlGroupUniqueUsers))
+print('test group users with different device types', len(testGroupUsersMultiSessions))
+
+saveToJSON('test group multi sessions', testGroupUsersMultiSessions)
+print('test group users count', len(testGroupUniqueUsers))
+print('users with multiple sessions are', EXCLUDE_MULTIPLE_SESSIONS == True and 'excluded' or 'saved, but only with the earliest hit_at')
+uniqueUsers.clear()
+
+print('--------------------------------------')
+print('users devices distribution')
+print('--------------------------------------')
 print('control group:')
 for device in controlGroupUsersByDeviceTypes.keys():
     count = len(controlGroupUsersByDeviceTypes[device])
     print('users count with device type', device, 'is', count, 
     formatPercentage(count/len(controlGroupUniqueUsers)))
-print('control group users with different device types', len(controlGroupUsersMulti), 
-formatPercentage(len(controlGroupUsersMulti)/len(controlGroupUniqueUsers)))
 print('--------------------------------------')
 print('test group:')
 for device in testGroupUsersByDeviceTypes.keys():
     count = len(testGroupUsersByDeviceTypes[device])
     print('users count with device type', device, 'is', count, 
     formatPercentage(count/len(testGroupUniqueUsers)))
-print('control group users with different device types', len(testGroupUsersMulti), 
-formatPercentage(len(testGroupUsersMulti)/len(testGroupUniqueUsers)))
-
 
 for SESSION_WINDOW in SESSION_WINDOW_VALUES:
 
-    print('--------------------------------------')
+    print('\r\n--------------------------------------')
     print('session window is', SESSION_WINDOW == None and 'unset' or str(SESSION_WINDOW) + ' hours')
     # control group users
     print('--------------------------------------')
@@ -278,7 +301,7 @@ for SESSION_WINDOW in SESSION_WINDOW_VALUES:
     result = getNextFunnelStepResult('Order Completed.csv', result, 'orderCompleted', ['order_sum'])
     currentResultName = 'control_group_session_window_' + (SESSION_WINDOW == None and 'unset' or str(SESSION_WINDOW) + 'h')
     
-    saveToCSV(currentResultName, result)
+    # saveToCSV(currentResultName, result)
     calculateRevenue(currentResultName, result, len(controlGroupUniqueUsers))
     result.clear()
     print('--------------------------------------')
@@ -299,8 +322,8 @@ for SESSION_WINDOW in SESSION_WINDOW_VALUES:
     saveToJSON('users count on Order Completed test group', result)
     currentResultName = 'test_group_session_window_' + (SESSION_WINDOW == None and 'unset' or str(SESSION_WINDOW) + 'h')
 
-    saveToCSV(currentResultName, result)
-    saveToJSON(currentResultName, result)
+    # saveToCSV(currentResultName, result)
+    # saveToJSON(currentResultName, result)
     calculateRevenue(currentResultName,result, len(testGroupUniqueUsers))
     
     result.clear()
